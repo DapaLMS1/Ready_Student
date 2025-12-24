@@ -5,38 +5,43 @@ const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 const app = express();
 const client = new SecretManagerServiceClient();
 
-// Helper to get secret
+// Helper to get secret - wrap in try/catch so it doesn't crash the whole app
 async function getSecret() {
-    // I updated the name below to match your "READY_STUDENT_SECRET"
     const name = 'projects/205993130602/secrets/READY_STUDENT_SECRET/versions/latest';
-    
     try {
         const [version] = await client.accessSecretVersion({ name });
         return version.payload.data.toString().trim();
     } catch (err) {
-        console.error("FAILED TO FETCH SECRET:", err.message);
-        throw err; // This will show up in your Cloud Run logs
+        console.error("SECRET ERROR:", err.message);
+        throw new Error("Could not retrieve API token from Secret Manager.");
     }
 }
 
-// THE MAIN LOGIC
 app.get('/', async (req, res) => {
     const studentId = req.query.id;
-    if (!studentId) return res.send("Bridge is Active. Please provide an ID like ?id=123");
+    
+    // Status Check
+    if (!studentId) {
+        return res.status(200).send("Bridge is Online. Usage: ?id=12345");
+    }
 
     try {
         const token = await getSecret();
         const response = await axios.get(`https://dapa.jobreadyplus.com/api/parties/${studentId}`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+            headers: { 
+                'Authorization': `Bearer ${token}`, 
+                'Accept': 'application/json' 
+            }
         });
         res.json(response.data);
     } catch (err) {
-        res.status(500).send("Error: " + err.message);
+        console.error("APP ERROR:", err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
-// CRITICAL: Cloud Run needs the server to listen on the port Google provides
+// CRITICAL: Start listening IMMEDIATELY
 const port = process.env.PORT || 8080;
-app.listen(port, () => {
-    console.log(`Bridge listening on port ${port}`);
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Bridge server is running on port ${port}`);
 });
