@@ -7,9 +7,16 @@ const client = new SecretManagerServiceClient();
 
 // Helper to get secret
 async function getSecret() {
-    const name = 'projects/205993130602/secrets/READY_STUDENT_TOKEN/versions/latest';
-    const [version] = await client.accessSecretVersion({ name });
-    return version.payload.data.toString().trim();
+    // I updated the name below to match your "READY_STUDENT_SECRET"
+    const name = 'projects/205993130602/secrets/READY_STUDENT_SECRET/versions/latest';
+    
+    try {
+        const [version] = await client.accessSecretVersion({ name });
+        return version.payload.data.toString().trim();
+    } catch (err) {
+        console.error("FAILED TO FETCH SECRET:", err.message);
+        throw err; // This will show up in your Cloud Run logs
+    }
 }
 
 // THE MAIN LOGIC
