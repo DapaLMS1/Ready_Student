@@ -1,53 +1,48 @@
-const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 const axios = require('axios');
+const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 
 const client = new SecretManagerServiceClient();
 
-async function getSecret() {
-  // Replace with your actual secret name/path from Google Cloud
-  const [version] = await client.accessSecretVersion({
-    name: 'projects/205993130602/secrets/READY_STUDENT_TOKEN/versions/latest',
-  });
-  return version.payload.data.toString();
+// 1. Function to grab your API token from Secret Manager
+async function getReadyStudentToken() {
+    const name = 'projects/205993130602/secrets/READY_STUDENT_TOKEN/versions/latest';
+    const [version] = await client.accessSecretVersion({ name });
+    return version.payload.data.toString().trim();
 }
 
+// 2. The main "Bridge" function
 exports.readyStudentBridge = async (req, res) => {
-  // Set CORS headers so your GitHub HTML form can talk to this URL
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(204).send('');
-  }
-
-  const studentId = req.query.id || (req.body && req.body.id);
-
-  if (!studentId) {
-    return res.status(400).send('Missing Student ID');
-  }
-
-  try {
-    const apiToken = await getSecret();
+    // Enable CORS so you can test from a browser or GitHub page
+    res.set('Access-Control-Allow-Origin', '*');
     
-    // Ready Student API endpoint for a single Party (Student)
-    const response = await axios.get(`https://dapa.jobreadyplus.com/api/parties/${studentId}`, {
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
-    });
+    // Get the ID from the URL (e.g., ?id=12345)
+    const studentId = req.query.id;
 
-    // Ready Student usually returns "first_name" and "last_name"
-    const { first_name, last_name } = response.data;
-    res.status(200).json({ 
-      name: `${first_name} ${last_name}`,
-      id: studentId 
-    });
+    if (!studentId) {
+        return res.status(400).send('Please provide a Student ID. Example: ?id=12345');
+    }
 
-  } catch (error) {
-    console.error('API Error:', error.response ? error.response.data : error.message);
-    res.status(500).send('Error fetching student data');
-  }
+    try {
+        const token = await getReadyStudentToken();
+        
+        // Replace 'dapa' with your actual Ready Student subdomain if different
+        const url = `https://dapa.jobreadyplus.com/api/parties/${studentId}`;
+
+        const response = await axios.get(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        // Ready Student usually returns "first_name" and "last_name"
+        const student = response.data;
+        const fullName = `${student.first_name} ${student.last_name}`;
+
+        res.status(200).send(`Student ID ${studentId} is: ${fullName}`);
+
+    } catch (error) {
+        console.error('API Error:', error.message);
+        res.status(500).send('Could not find student or API connection failed.');
+    }
 };
